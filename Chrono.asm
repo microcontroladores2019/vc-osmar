@@ -1,0 +1,209 @@
+; CONTADOR DISPLAY DE 7 SEGMENTOS
+;RESET-RB0/START-RB4/PAUSE-RB5 
+	CONTH	EQU	0x20
+	CONTL	EQU	0x21
+	
+	DIG1	equ	0x02
+	DIG2	equ	0x03
+	DIG3	equ	0x04
+	DIG4	equ	0x05
+
+	H_byte  equ     0x30
+	L_byte  equ     0x31
+	count  equ      0x36
+	temp   equ      0x37
+	R0      equ     0x32
+	R1      equ     0x33
+	R2      equ     0x34
+    W_TEMP EQU 0x22
+	STATUS_TEMP EQU 0x23
+	PCLATH_TEMP EQU 0x24
+    DELAY EQU 0x25
+	
+	ORG 0x00
+	GOTO INICIO
+
+	ORG 0X04
+INTERRUPT
+	MOVWF W_TEMP ;Copy W to TEMP register
+	SWAPF STATUS,W ;Swap status to be saved into W
+	CLRF STATUS ;bank 0, regardless of current bank, Clears IRP,RP1,RP0
+	MOVWF STATUS_TEMP ;Save status to bank zero STATUS_TEMP register
+	MOVF PCLATH, W ;Only required if using pages 1, 2 and/or 3
+	MOVWF PCLATH_TEMP ;Save PCLATH into W
+	CLRF PCLATH ;Page zero, regardless of current page
+
+	BTFSC INTCON,INTF ; RESET PRESSED
+	GOTO RESET_BUT 
+	BTFSC INTCON,RBIF ; START PRESSED || PAUSE PRESSED
+	GOTO MISC_BUT
+    BTFSC INTCON,TMR0IF ; TMR0
+	GOTO TIMER_INT
+
+END_INT
+	MOVF PCLATH_TEMP, W ;Restore PCLATH
+	MOVWF PCLATH ;Move W into PCLATH
+	SWAPF STATUS_TEMP,W ;Swap STATUS_TEMP register into W 
+	;(sets bank to original state)
+	MOVWF STATUS ;Move W into STATUS register
+	SWAPF W_TEMP,F ;Swap W_TEMP
+	SWAPF W_TEMP,W ;Swap W_TEMP into W
+	BCF INTCON,INTF ; ZERA A FLAG DE B0
+	BCF INTCON,TMR0IF ; ZERA FLAG DO TIMER0
+    BCF INTCON,RBIF ;
+	RETFIE
+
+RESET_BUT
+    CLRF CONTL
+    CLRF CONTH
+    GOTO END_INT
+
+START_BUT
+    CLRF TMR0
+    GOTO END_INT
+
+PAUSE_BUT
+    NOP
+    GOTO PAUSE_BUT
+
+MISC_BUT
+    BTFSC PORTB,5;
+    GOTO PAUSE_BUT
+    BTFSC PORTB,4;
+    GOTO START_BUT
+
+    GOTO END_INT
+
+
+TIMER_INT
+
+	DECFSZ DELAY,F
+    GOTO END_INT
+    MOVLW 31
+	MOVWF DELAY
+    INCF CONTL, F
+    BTFSC STATUS, Z
+    INCF CONTH, F
+
+    GOTO END_INT	
+
+INICIO
+	BSF STATUS, RP0
+	CLRF TRISA
+	CLRF TRISB
+	CLRF TRISD
+    BSF OPTION_REG,6  ;O INTERRUPT DE B0 SERÁ NA BORDA DE SUBIDA
+	BCF OPTION_REG,5 ; ATIVA O TIMER0
+	BCF OPTION_REG,3 ; COLOCA O PRESCALER NO TIMER0
+	BSF OPTION_REG,2
+	BSF OPTION_REG,1
+	BCF OPTION_REG,0 ;
+	BCF STATUS,RP0
+    BSF INTCON,5  ;ATIVA INTERRUPT DO TIMER0
+	BSF INTCON,4  ;ATIVA INTERRUPT PORTB0
+    BSF INTCON,3 ; ATIVA INTERRUPT PORT B
+    BSF INTCON,7 ; GIE
+
+	CLRF L_byte
+	CLRF H_byte
+	CLRF CONTL
+    CLRF CONTH
+    MOVLW 31
+	MOVWF DELAY	
+
+
+LOOP_CONT
+	MOVF CONTL, W
+	MOVWF L_byte
+	MOVF CONTH, W
+	MOVWF H_byte
+IMP_HL_byte
+	CALL B2_BCD
+IMP_DIG4
+	MOVF R2, W
+	ANDLW 0x0F
+	CALL TABELA_DIG
+	MOVWF PORTD
+	BSF PORTA, DIG4
+	BCF PORTA, DIG4
+IMP_DIG3
+	SWAPF R2,W
+	ANDLW 0x0F
+	CALL TABELA_DIG
+	MOVWF PORTD
+	BSF PORTA, DIG3
+	BCF PORTA, DIG3
+IMP_DIG2
+	MOVF R1, W
+	ANDLW 0x0F
+	CALL TABELA_DIG
+	MOVWF PORTD
+	BSF PORTA, DIG2
+	BCF PORTA, DIG2
+IMP_DIG1
+	SWAPF R1,W
+	ANDLW 0x0F
+	CALL TABELA_DIG
+	MOVWF PORTD
+	BSF PORTA, DIG1
+	BCF PORTA, DIG1
+FIM
+	GOTO LOOP_CONT
+	
+TABELA_DIG
+	ADDWF PCL, F
+	RETLW 0x3F
+	RETLW 0x06
+	RETLW 0x5B
+	RETLW 0x4F
+	RETLW 0x66
+	RETLW 0x6D
+	RETLW 0x7D
+	RETLW 0x07
+	RETLW 0x7F
+	RETLW 0x6F
+	
+	
+B2_BCD  bcf     STATUS,0                ; clear the carry bit
+	movlw   16
+	movwf   count
+	clrf    R0
+	clrf    R1
+	clrf    R2
+loop16  rlf     L_byte, F
+	rlf     H_byte, F
+	rlf     R2, F
+	rlf     R1, F
+	rlf     R0, F
+;
+	decfsz  count, F
+	goto    adjDEC
+	RETLW   0
+;
+adjDEC  movlw   R2
+	movwf   FSR
+	call    adjBCD
+;
+	movlw   R1
+	movwf   FSR
+	call    adjBCD
+;
+	movlw   R0
+	movwf   FSR
+	call    adjBCD
+;
+	goto    loop16
+;
+adjBCD  movlw   3
+	addwf   0,W
+	movwf   temp
+	btfsc   temp,3          ; test if result > 7
+	movwf   0
+	movlw   0x30
+	addwf   0,W
+	movwf   temp
+	btfsc   temp,7          ; test if result > 7
+	movwf   0               ; save as MSD
+	RETLW   0
+
+
