@@ -209,9 +209,11 @@ adjBCD  movlw   3
 	RETLW   0
 
 PAUSA
+    BCF INTCON,TMR0IF
     BTFSC PORTB,5;
     GOTO PAUSA;
     BTFSS PORTB,4;
     GOTO PAUSA
     CLRF TMR0
+    BCF INTCON,TMR0IF
     return
