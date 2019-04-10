@@ -113,6 +113,8 @@ INICIO
 
 
 LOOP_CONT
+    BTFSC PORTB,5;
+    CALL PAUSA
 	MOVF CONTL, W
 	MOVWF L_byte
 	MOVF CONTH, W
@@ -206,4 +208,10 @@ adjBCD  movlw   3
 	movwf   0               ; save as MSD
 	RETLW   0
 
-
+PAUSA
+    BTFSC PORTB,5;
+    GOTO PAUSA;
+    BTFSS PORTB,4;
+    GOTO PAUSA
+    CLRF TMR0
+    return
